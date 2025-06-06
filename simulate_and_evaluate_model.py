@@ -1,49 +1,138 @@
 import numpy as np
 import pandas as pd
 import random
+import math
+
+A = 1
+B = 2
+
+def sample_from_list(lst, n, distribution="uniform", spread=3):
+    """
+    Samples n elements from lst based on the specified distribution.
+
+    Parameters:
+        lst (list): The list to sample from.
+        n (int): Number of elements to sample.
+        distribution (str): "uniform" or "half_gaussian_bell".
+        spread (float): Controls steepness for half_gaussian_bell (default 3).
+
+    Returns:
+        list: Sampled elements.
+    """
+    if len(lst) < n:
+        raise ValueError("n cannot be larger than the length of the list")
+
+    if distribution == "uniform":
+        return list(np.random.choice(lst, size=n, replace=False))
+
+    elif distribution == "half_gaussian_bell":
+        x = np.linspace(-spread, 0, len(lst))
+        weights = np.exp(-x**2 / 2)
+        weights /= weights.sum()
+        return list(np.random.choice(lst, size=n, replace=False, p=weights))
+
+    else:
+        raise ValueError(f"Unsupported distribution type: {distribution}")
 
 class ISamplerAgent:
-    def __init__(self, delta=0.5, kappa=10, eta=0.1):
+    def __init__(self, delta=0.5, kappa=10, eta=0.1, padescriptor=None, distribution = "half_gaussian_bell"):
         self.delta = delta
         self.kappa = kappa
         self.eta = eta
-        self.memory = []
-        self.last_choice = None
-        self.last_reward = None
+        self.padescriptor = padescriptor
+        self.distribution = distribution
+        self.memory = []  # Each entry will be (choice, A_payoff, B_payoff) where choice is 1 for A, 0 for B
 
-    def surprise(self, last_reward):
+    def surprise(self):
         if not self.memory:
-            return 1.0
-        rewards = [r for _, r in self.memory]
-        if not rewards:
-            return 1.0
-        mean = np.mean(rewards)
-        range_ = max(rewards) - min(rewards)
-        if range_ == 0:
-            return 1.0
-        return abs(mean - last_reward) / range_
+            return 0.0
+        
+        j = self.memory[-1][0]
+        V_j_t = self.memory[-1][j]
+        
+        rewards = []
+        for r in self.memory:
+            if r[j] is not None:
+                rewards.append(r[j])
+        max_reward = max(rewards)
+        min_reward = min(rewards)
+        if max_reward == min_reward:
+            return 0.0
+        mean_reward = np.mean(rewards)
+        return abs(mean_reward - V_j_t) / (max_reward - min_reward)
+    
 
-    def choose(self, t, prior_score):
-        if t == 0 or random.random() < self.delta:
-            return int(prior_score > 0.5)
-        if random.random() > self.eta * self.surprise(self.last_reward):
-            return self.last_choice
-        sample = random.sample(self.memory, min(self.kappa, len(self.memory)))
-        avg_rewards = {0: [], 1: []}
-        for c, r in sample:
-            avg_rewards[c].append(r)
-        means = []
-        for i in [0, 1]:
-            if avg_rewards[i]:
-                means.append(np.mean(avg_rewards[i]))
-            else:
-                means.append(0.0)
-        return int(means[1] > means[0])
+    def get_rand_indexes(self, num_of_idx, type = None):
+        idx_list = []
+        for idx in len(self.memory):
+            if type == None or self.memory[idx][0] == type:
+                idx_list.append(idx)
+        assert(len(idx_list) != 0)
+        num_of_idx = min(num_of_idx, len(idx_list))
+        return sample_from_list(idx_list, num_of_idx, self.distribution)
 
-    def update(self, choice, reward):
-        self.memory.append((choice, reward))
-        self.last_choice = choice
-        self.last_reward = reward
+        
+    def get_sample_prob(self):
+        if self.forgone:
+            num_of_A = 0
+            for r in self.memory:
+                if r[0] == A :
+                    num_of_A+= 1
+            percentage_A = num_of_A / len(self.memory)
+            kappa_A = math.ceil(percentage_A*self.kappa)
+            kappa_B = math.ceil((1-percentage_A)*self.kappa)
+            rewards_rand_index_A = self.get_rand_indexes(kappa_A, A)# indexes
+            rewards_rand_index_B =  self.get_rand_indexes(kappa_B, B) # indexes
+            reward_rand_A = []
+            reward_rand_B = []
+            for idx in rewards_rand_index_A:
+                reward_rand_A.append(self.memory[idx][A])
+            for idx in rewards_rand_index_B:
+                reward_rand_B.append(self.memory[idx][B])
+            avg_A = np.mean(reward_rand_A)
+            avg_B = np.mean(reward_rand_B)
+            if avg_A*avg_B <= 0:
+                if avg_A > 0:
+                    return 1
+                else:
+                    return 0
+            if avg_A < 0:
+                return avg_B/(avg_A+avg_B) 
+            return avg_A/(avg_A+avg_B) 
+        else:
+            counter_A_better = 0
+            rewards_rand = self.get_rand_indexes(self.kappa)
+            for index  in rewards_rand:
+                if  self.memory[index][A] > self.memory[index][B]:
+                    counter_A_better += 1
+            return counter_A_better / len(rewards_rand)
+        
+    
+    def choose(self):
+        # TODO first trial
+        p_surprise = self.surprise()
+        p_inertia = 0
+        coeff_inertia = (1-p_surprise)*(1-self.eta)
+        if self.memory[-1][0] == A:
+            p_inertia = coeff_inertia
+        coeff_new_dec = 1 - coeff_inertia
+        p_old = self.delta**((len(self.memory)-1)/len(self.memory))
+        p_new = 1 - p_old
+        p_sample = self.get_sample_prob()
+        p_desc = self.padescriptor
+        p_new_desiciion = coeff_new_dec*(p_old*p_desc + p_new*p_sample)
+        total_prob = p_inertia + p_new_desiciion
+        # TODO change to flipping a coin
+        if total_prob > 0.5:
+            return A
+        else:
+            return B
+
+
+    def update(self, choice, a_payoff, b_payoff):
+        self.memory.append((choice, a_payoff, b_payoff))
+
+
 
 
 def simulate_task(prior_score, a_prob, a1, a2, b_prob, b1, b2, forgone, n_participants, n_trials):
