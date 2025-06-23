@@ -35,7 +35,7 @@ def sample_from_list(lst, n, distribution="half_gaussian_bell", spread=3):
         raise ValueError(f"Unsupported distribution type: {distribution}")
 
 class ISamplerAgent:
-    def __init__(self, delta=0.5, kappa=10, eta=0.1, padescriptor=None, distribution = "half_gaussian_bell", forgone=False):
+    def __init__(self, delta=0.5, kappa=10, eta=0.1, padescriptor=None, distribution = "uniform", forgone=False):
         self.delta = delta
         self.kappa = kappa
         self.eta = eta
@@ -60,6 +60,8 @@ class ISamplerAgent:
         if max_reward == min_reward:
             return 0.0
         mean_reward = np.mean(rewards)
+        if mean_reward < V_j_t:
+            return 0.0
         return abs(mean_reward - V_j_t) / (max_reward - min_reward)
     
 
@@ -110,9 +112,9 @@ class ISamplerAgent:
             return counter_A_better / len(rewards_rand)
         
     def get_last_choice(self):
-        if len(self.memory) == 0:
+        if len(self.memory) == 1:
             return None
-        return self.memory[-1][0]
+        return self.memory[-2][0]
     
     def get_last_A_B_choices(self):
         last_A_idx = -1
@@ -131,6 +133,8 @@ class ISamplerAgent:
     def choose(self):
         if len(self.memory) == 0 :
             return A if random.random() < self.padescriptor else B
+        # if len(self.memory) == 1 and self.forgone:
+            # return A if self.memory[0][self.memory[0][0]] == B else B
         p_surprise = self.surprise()
         p_inertia = 0
         coeff_inertia = (1-p_surprise)*(1-self.eta)
@@ -143,7 +147,7 @@ class ISamplerAgent:
         p_desc = self.padescriptor
         p_new_desiciion = coeff_new_dec*(p_old*p_desc + p_new*p_sample)
         total_prob = p_inertia + p_new_desiciion
-    
+        # breakpoint()
         return A if random.random() < total_prob else B
 
     def update(self, choice, a_payoff, b_payoff):
@@ -152,24 +156,35 @@ class ISamplerAgent:
 
 
 
-def simulate_task(p_a_descriptor, a_prob, a1, a2, b_prob, b1, b2, forgone, n_participants, n_trials):
+def simulate_task(p_a_descriptor, a_prob, a1, a2, b_prob, b1, b2, forgone, n_participants, n_trials, corr_ab, kappa, delta, eta):
     results = {
         'arate1': 0.0, 'arate2': 0.0, 'arate3': 0.0, 'arate4': 0.0,
         'afoka': 0.0, 'afrega': 0.0, 'afregb': 0.0, 'afokb': 0.0
     }
     results_custom = { 'total_a_after_ok_a' : 0 , 'total_a_after_bad_a' : 0, 'total_a_after_bad_b' : 0
                       , 'total_a_after_ok_b' : 0 , 'total_A' : [0,0,0,0]}
+    total_results_custom = { 'total_after_ok_a' : 0 , 'total_after_bad_a' : 0, 'total_after_bad_b' : 0
+                      , 'total_after_ok_b' : 0 }
     def get_reward():
-        rand_choice = random.random()
-        reward_A = a1 if rand_choice < a_prob else a2
-        reward_B = b1 if rand_choice < b_prob else b2
+        randA_choice = random.random()
+        randB_choice = randA_choice
+        if corr_ab == -1:
+            randB_choice = 1 - randA_choice
+        elif corr_ab == 0:
+            randB_choice = random.random()
+
+        reward_A = a1 if randA_choice < a_prob else a2
+        reward_B = b1 if randB_choice < b_prob else b2
         return ( 0 , reward_A, reward_B)
         
 
     for _ in range(n_participants):
-        agent = ISamplerAgent(padescriptor=p_a_descriptor, forgone=forgone)
+        agent = ISamplerAgent(padescriptor=p_a_descriptor, forgone=forgone, kappa= kappa, delta = delta, eta = eta)
 
         for t in range(n_trials):
+            # breakpoint()
+            # if t % 25 == 0:
+                # breakpoint()
             block = t // (n_trials // 4)
             choice = agent.choose()
             rewards = get_reward()
@@ -184,36 +199,43 @@ def simulate_task(p_a_descriptor, a_prob, a1, a2, b_prob, b1, b2, forgone, n_par
                 agent.update(choice, rewards[A], rewards[B])
 
             last_choice = agent.get_last_choice()
-            if last_choice == None or choice == B:
+            if last_choice == None:
                 continue
             a_last_payoff, b_last_payoff = agent.get_last_A_B_choices()
             if a_last_payoff is None or b_last_payoff is None:
                 continue
+            add = 0
+            if choice == A:
+                add = 1
             if last_choice == A:
                 if a_last_payoff > b_last_payoff:
-                    results_custom['total_a_after_ok_a'] += 1
+                    results_custom['total_a_after_ok_a'] += add
+                    total_results_custom['total_after_ok_a'] += 1
                 else:
-                    results_custom['total_a_after_bad_a'] += 1
+                    results_custom['total_a_after_bad_a'] += add
+                    total_results_custom['total_after_bad_a'] += 1
             else:
                 if a_last_payoff > b_last_payoff:
-                    results_custom['total_a_after_bad_b'] += 1
+                    results_custom['total_a_after_bad_b'] += add
+                    total_results_custom['total_after_bad_b'] += 1
                 else:
-                    results_custom['total_a_after_ok_b'] += 1
+                    results_custom['total_a_after_ok_b'] += add
+                    total_results_custom['total_after_ok_b'] += 1
 
     results['arate1'] = results_custom['total_A'][0] / (n_participants*(n_trials/4))
     results['arate2'] = results_custom['total_A'][1] / (n_participants*(n_trials/4))
     results['arate3'] = results_custom['total_A'][2] / (n_participants*(n_trials/4))
     results['arate4'] = results_custom['total_A'][3] / (n_participants*(n_trials/4))
     
-    results['afoka'] = results_custom['total_a_after_ok_a'] / (n_participants*n_trials)
-    results['afrega'] = results_custom['total_a_after_bad_a'] / (n_participants*n_trials)
-    results['afregb'] = results_custom['total_a_after_bad_b'] / (n_participants*n_trials)
-    results['afokb'] = results_custom['total_a_after_ok_b'] / (n_participants*n_trials)
+    results['afoka'] = results_custom['total_a_after_ok_a'] / total_results_custom['total_after_ok_a'] if total_results_custom['total_after_ok_a'] != 0 else 0
+    results['afrega'] = results_custom['total_a_after_bad_a'] / total_results_custom['total_after_bad_a'] if total_results_custom['total_after_bad_a'] != 0 else 0
+    results['afregb'] = results_custom['total_a_after_bad_b'] / total_results_custom['total_after_bad_b'] if total_results_custom['total_after_bad_b'] != 0 else 0
+    results['afokb'] = results_custom['total_a_after_ok_b'] / total_results_custom['total_after_ok_b'] if total_results_custom['total_after_ok_b'] != 0 else 0
 
     return results
 
 
-def evaluate_against_dataset(excel_path):
+def evaluate_against_dataset(excel_path, kappa, delta, eta):
     df = pd.read_excel(excel_path)
     target_cols = ['arate1', 'arate2', 'arate3', 'arate4', 'afoka', 'afrega', 'afregb', 'afokb']
     df_clean = df[df['ChatGPTo'].notna()]
@@ -222,48 +244,61 @@ def evaluate_against_dataset(excel_path):
     df_clean[target_cols] = df_clean[target_cols].astype(float)
 
     predicted_results = []
+
     for _, row in df_clean.iterrows():
         sim_result = simulate_task(
             p_a_descriptor=float(row['ChatGPTo']),
             a_prob=float(row['pa1']), a1=float(row['a1']), a2=float(row['a2']),
             b_prob=float(row['pb1']), b1=float(row['b1']), b2=float(row['b2']),
-            forgone=bool(row['forgone']), n_participants=int(row['n']), n_trials=100
-        )
+            forgone=bool(1 - row['forgone']), n_participants=3*int(row['n']), n_trials=100, corr_ab=int(row['corrAB'])
+        , kappa = kappa, delta = delta, eta = eta)
         predicted_results.append(sim_result)
-        break
 
     pred_df = pd.DataFrame(predicted_results)
     gt_df = df_clean[target_cols].reset_index(drop=True)
     comparison_df = pd.concat([pred_df.add_prefix('pred_'), gt_df.add_prefix('gt_')], axis=1)
-    comparison_df['MSE'] = ((pred_df - gt_df) ** 2).mean(axis=1)
-
+    comparison_df['MSE'] = ((pred_df.round(3) - gt_df.round(3)) ** 2).mean(axis=1)
     print("\n--- Summary ---")
     print(comparison_df.mean())
     print("\n--- Detailed Comparison ---")
     print(comparison_df.head())
+    return comparison_df['MSE'].mean()
 
     return comparison_df
 
 if __name__ == "__main__":
     file_path = "Training 2025.04.22DM.xlsx"  # Adjust path if needed
-    evaluate_against_dataset(file_path)
-
+    min_lossval = 1
+    loss_indexes = [0,0.0,0.0]
+    for i in range(4,5):
+        kappa = i 
+        for j in range(2,3):
+            delta = j/10
+            for k in range(7,8):
+                eta = k / 10
+                curr_loss = evaluate_against_dataset(file_path, kappa=kappa, delta=delta, eta=eta)
+                if curr_loss < min_lossval:
+                    loss_indexes = [kappa, delta, eta]
+                    min_lossval = curr_loss
+    print(min_lossval)
+    print(loss_indexes)
+    exit(0)
     sim_result = simulate_task(
             p_a_descriptor=0.215,
             a_prob=1, a1=0, a2=0,
             b_prob=0.1, b1=10, b2=-1,
-            forgone=True, n_participants=300, n_trials=100
+            forgone=True, n_participants=1, n_trials=100, corr_ab=0, kappa=4, delta=0.2, eta = 0.8
         )
     
-    print("\nSimulation Results:")
-    print("-----------------")
-    print("Block Averages:")
-    print(f"  Block 1: {sim_result['arate1']:.3f}")
-    print(f"  Block 2: {sim_result['arate2']:.3f}")
-    print(f"  Block 3: {sim_result['arate3']:.3f}")
-    print(f"  Block 4: {sim_result['arate4']:.3f}")
-    print("\nCondition Averages:")
-    print(f"  After OK A: {sim_result['afoka']:.3f}")
-    print(f"  After Regret A: {sim_result['afrega']:.3f}")
-    print(f"  After Regret B: {sim_result['afregb']:.3f}")
-    print(f"  After OK B: {sim_result['afokb']:.3f}")
+    # print("\nSimulation Results:")
+    # print("-----------------")
+    # print("Block Averages:")
+    # print(f"  Block 1: {sim_result['arate1']:.3f}")
+    # print(f"  Block 2: {sim_result['arate2']:.3f}")
+    # print(f"  Block 3: {sim_result['arate3']:.3f}")
+    # print(f"  Block 4: {sim_result['arate4']:.3f}")
+    # print("\nCondition Averages:")
+    # print(f"  After OK A: {sim_result['afoka']:.3f}")
+    # print(f"  After Regret A: {sim_result['afrega']:.3f}")
+    # print(f"  After Regret B: {sim_result['afregb']:.3f}")
+    # print(f"  After OK B: {sim_result['afokb']:.3f}")
