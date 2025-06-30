@@ -95,8 +95,8 @@ class ISamplerAgent:
                 reward_rand_B.append(self.memory[idx][B])
             avg_A = np.mean(reward_rand_A) if len(reward_rand_A) > 0 else 0
             avg_B = np.mean(reward_rand_B) if len(reward_rand_B) > 0 else 0
-            if avg_A*avg_B <= 0:
-                if avg_A > 0:
+            if avg_A*avg_B < 0:
+                if avg_A >= 0:
                     return 1
                 else:
                     return 0
@@ -133,8 +133,8 @@ class ISamplerAgent:
     def choose(self):
         if len(self.memory) == 0 :
             return A if random.random() < self.padescriptor else B
-        # if len(self.memory) == 1 and self.forgone:
-            # return A if self.memory[0][self.memory[0][0]] == B else B
+        if len(self.memory) == 1 and self.forgone:
+            return A if self.memory[0][0] == B else B
         p_surprise = self.surprise()
         p_inertia = 0
         coeff_inertia = (1-p_surprise)*(1-self.eta)
@@ -156,7 +156,7 @@ class ISamplerAgent:
 
 
 
-def simulate_task(p_a_descriptor, a_prob, a1, a2, b_prob, b1, b2, forgone, n_participants, n_trials, corr_ab, kappa, delta, eta):
+def simulate_task(p_a_descriptor, a_prob, a1, a2, b_prob, b1, b2, forgone, n_participants, n_trials, corr_ab, kappa, delta, eta ,distribution , radius=1 ):
     results = {
         'arate1': 0.0, 'arate2': 0.0, 'arate3': 0.0, 'arate4': 0.0,
         'afoka': 0.0, 'afrega': 0.0, 'afregb': 0.0, 'afokb': 0.0
@@ -178,8 +178,9 @@ def simulate_task(p_a_descriptor, a_prob, a1, a2, b_prob, b1, b2, forgone, n_par
         return ( 0 , reward_A, reward_B)
         
 
-    for _ in range(n_participants):
-        agent = ISamplerAgent(padescriptor=p_a_descriptor, forgone=forgone, kappa= kappa, delta = delta, eta = eta)
+    for idx in range(n_participants):
+        kappa_curr = kappa + (radius - (idx % (radius*2 + 1)))
+        agent = ISamplerAgent(padescriptor=p_a_descriptor, forgone=forgone, kappa= kappa_curr, delta = delta, eta = eta, distribution=distribution)
 
         for t in range(n_trials):
             # breakpoint()
@@ -235,7 +236,7 @@ def simulate_task(p_a_descriptor, a_prob, a1, a2, b_prob, b1, b2, forgone, n_par
     return results
 
 
-def evaluate_against_dataset(excel_path, kappa, delta, eta):
+def evaluate_against_dataset(excel_path, kappa, delta, eta, distribution, radius, scale):
     df = pd.read_excel(excel_path)
     target_cols = ['arate1', 'arate2', 'arate3', 'arate4', 'afoka', 'afrega', 'afregb', 'afokb']
     df_clean = df[df['ChatGPTo'].notna()]
@@ -250,8 +251,8 @@ def evaluate_against_dataset(excel_path, kappa, delta, eta):
             p_a_descriptor=float(row['ChatGPTo']),
             a_prob=float(row['pa1']), a1=float(row['a1']), a2=float(row['a2']),
             b_prob=float(row['pb1']), b1=float(row['b1']), b2=float(row['b2']),
-            forgone=bool(1 - row['forgone']), n_participants=3*int(row['n']), n_trials=100, corr_ab=int(row['corrAB'])
-        , kappa = kappa, delta = delta, eta = eta)
+            forgone=bool(1 - row['forgone']), n_participants=scale*int(row['n']), n_trials=100, corr_ab=int(row['corrAB'])
+        , kappa = kappa, delta = delta, eta = eta, distribution=distribution,  radius = radius)
         predicted_results.append(sim_result)
 
     pred_df = pd.DataFrame(predicted_results)
@@ -267,21 +268,28 @@ def evaluate_against_dataset(excel_path, kappa, delta, eta):
     return comparison_df
 
 if __name__ == "__main__":
+    hyper_parameters = {
+        "kappa": 7,
+        "delta": 0.44427423585655046,
+        "eta": 0.7315985522666514,
+        "distribution": "uniform",
+        "radius": 3,
+        "scale": 10
+    }
     file_path = "Training 2025.04.22DM.xlsx"  # Adjust path if needed
-    min_lossval = 1
-    loss_indexes = [0,0.0,0.0]
-    for i in range(4,5):
-        kappa = i 
-        for j in range(2,3):
-            delta = j/10
-            for k in range(7,8):
-                eta = k / 10
-                curr_loss = evaluate_against_dataset(file_path, kappa=kappa, delta=delta, eta=eta)
-                if curr_loss < min_lossval:
-                    loss_indexes = [kappa, delta, eta]
-                    min_lossval = curr_loss
-    print(min_lossval)
-    print(loss_indexes)
+    
+    # Use the hyper_parameters dictionary to call evaluate_against_dataset
+    lossval =  evaluate_against_dataset(
+        file_path,
+        kappa=hyper_parameters["kappa"],
+        delta=hyper_parameters["delta"],
+        eta=hyper_parameters["eta"],
+        distribution=hyper_parameters["distribution"],
+        radius=hyper_parameters["radius"],
+        scale=hyper_parameters["scale"]
+    )
+    print(lossval)
+    
     exit(0)
     sim_result = simulate_task(
             p_a_descriptor=0.215,

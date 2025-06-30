@@ -1,2 +1,8 @@
 kappa,delta,eta,distribution,mse
 7,0.5,0.5,g,0.118
+Best loss: 0.03743377118644068
+Best parameters:
+kappa=6, delta=0.46511454419887244, eta=0.7229091383523364, distribution=uniform, radius=1, scale=5
+est loss: 0.0371299406779661
+Best parameters:
+kappa=7, delta=0.44427423585655046, eta=0.7315985522666514, distribution=uniform, radius=3, scale=10
