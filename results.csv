@@ -6,3 +6,7 @@ kappa=6, delta=0.46511454419887244, eta=0.7229091383523364, distribution=uniform
 est loss: 0.0371299406779661
 Best parameters:
 kappa=7, delta=0.44427423585655046, eta=0.7315985522666514, distribution=uniform, radius=3, scale=10
+
+Best loss: 0.026735109463276837
+Best parameters:
+kappa=9, delta=0.4143158063681155, eta=0.7492172409901976, distribution=uniform, radius=3, scale=5

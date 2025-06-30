@@ -72,6 +72,7 @@ class ISamplerAgent:
                 idx_list.append(idx)
         if len(idx_list) == 0:
             return []
+        
         num_of_idx = min(num_of_idx, len(idx_list))
         return sample_from_list(idx_list, num_of_idx, self.distribution)
 
@@ -89,27 +90,48 @@ class ISamplerAgent:
             rewards_rand_index_B =  self.get_rand_indexes(kappa_B, B) # indexes
             reward_rand_A = []
             reward_rand_B = []
+
             for idx in rewards_rand_index_A:
                 reward_rand_A.append(self.memory[idx][A])
             for idx in rewards_rand_index_B:
                 reward_rand_B.append(self.memory[idx][B])
+            
             avg_A = np.mean(reward_rand_A) if len(reward_rand_A) > 0 else 0
             avg_B = np.mean(reward_rand_B) if len(reward_rand_B) > 0 else 0
-            if avg_A*avg_B < 0:
-                if avg_A >= 0:
-                    return 1
-                else:
-                    return 0
-            if avg_A < 0:
-                return avg_B/(avg_A+avg_B) 
-            return avg_A/(avg_A+avg_B) 
+
+            total_competitions = len(rewards_rand_index_A) + len(rewards_rand_index_B)
+            
+            # print(f"kappa: {self.kappa}, kappa_A: {kappa_A}, kappa_B: {kappa_B}, rewards_rand_index_A: {rewards_rand_index_A}, rewards_rand_index_B: {rewards_rand_index_B}")
+            # exit(0)
+            # assert (total_competitions == len(rewards_rand_index_A ) + len(rewards_rand_index_B))
+
+            a_won = 0
+            equal_competitions = 0
+            for i in range(len(self.memory)):
+                if i in rewards_rand_index_A:
+                    if(self.memory[i][A] > avg_B):
+                        a_won += 1
+                    elif self.memory[i][A] == avg_B:
+                        equal_competitions += 1
+                elif i in rewards_rand_index_B:
+                    if(self.memory[i][B] < avg_A):
+                        a_won += 1
+                    elif self.memory[i][B] == avg_A:
+                        equal_competitions += 1
+
+            return (a_won + 0.5*equal_competitions) / total_competitions
+
+
         else:
             counter_A_better = 0
+            counter_equals = 0
             rewards_rand = self.get_rand_indexes(self.kappa, type=None)
             for index  in rewards_rand:
                 if  self.memory[index][A] > self.memory[index][B]:
                     counter_A_better += 1
-            return counter_A_better / len(rewards_rand)
+                elif self.memory[index][A] == self.memory[index][B]:
+                    counter_equals += 1
+            return (counter_A_better + 0.5*counter_equals) / len(rewards_rand)
         
     def get_last_choice(self):
         if len(self.memory) == 1:
@@ -133,7 +155,7 @@ class ISamplerAgent:
     def choose(self):
         if len(self.memory) == 0 :
             return A if random.random() < self.padescriptor else B
-        if len(self.memory) == 1 and self.forgone:
+        if len(self.memory) == 1 and self.forgone: #check later what to do with this
             return A if self.memory[0][0] == B else B
         p_surprise = self.surprise()
         p_inertia = 0
@@ -240,6 +262,10 @@ def evaluate_against_dataset(excel_path, kappa, delta, eta, distribution, radius
     df = pd.read_excel(excel_path)
     target_cols = ['arate1', 'arate2', 'arate3', 'arate4', 'afoka', 'afrega', 'afregb', 'afokb']
     df_clean = df[df['ChatGPTo'].notna()]
+    
+    # Filter to only include rows where forgone=0
+    df_clean = df_clean[df_clean['forgone'] == 1]
+    
     for col in target_cols:
         df_clean = df_clean[df_clean[col].apply(lambda x: str(x).replace('.', '', 1).isdigit())]
     df_clean[target_cols] = df_clean[target_cols].astype(float)
@@ -269,12 +295,12 @@ def evaluate_against_dataset(excel_path, kappa, delta, eta, distribution, radius
 
 if __name__ == "__main__":
     hyper_parameters = {
-        "kappa": 7,
-        "delta": 0.44427423585655046,
-        "eta": 0.7315985522666514,
+        "kappa": 9,
+        "delta": 0.4143158063681155,
+        "eta": 0.7492172409901976,
         "distribution": "uniform",
         "radius": 3,
-        "scale": 10
+        "scale": 6
     }
     file_path = "Training 2025.04.22DM.xlsx"  # Adjust path if needed
     
