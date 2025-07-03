@@ -60,7 +60,8 @@ class ISamplerAgent:
         if max_reward == min_reward:
             return 0.0
         mean_reward = np.mean(rewards)
-        if mean_reward < V_j_t:
+        
+        if mean_reward < V_j_t :
             return 0.0
         return abs(mean_reward - V_j_t) / (max_reward - min_reward)
     
@@ -69,7 +70,7 @@ class ISamplerAgent:
         idx_list = []
         for idx in range(len(self.memory)):
             if type == None or self.memory[idx][0] == type:
-                idx_list.append(idx)
+                idx_list.append(idx)    
         if len(idx_list) == 0:
             return []
         
@@ -86,6 +87,7 @@ class ISamplerAgent:
             percentage_A = num_of_A / len(self.memory)
             kappa_A = math.ceil(percentage_A*self.kappa)
             kappa_B = math.ceil((1-percentage_A)*self.kappa)
+            
             rewards_rand_index_A = self.get_rand_indexes(kappa_A, A)# indexes
             rewards_rand_index_B =  self.get_rand_indexes(kappa_B, B) # indexes
             reward_rand_A = []

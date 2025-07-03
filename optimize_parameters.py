@@ -4,12 +4,12 @@ from simulate_and_evaluate_model import evaluate_against_dataset
 
 # Define the parameter search space
 search_space = [
-    Integer(4,9, name='kappa'),
-    Real(0.1, 0.9, name='delta'),
+    Integer(2,9, name='kappa'),
+    Real(0.0, 0.9, name='delta'),
     Real(0.6, 0.9, name='eta'),
-    Categorical(['uniform', 'half_gaussian_bell'], name='distribution'),
-    Integer(1, 3, name='radius'),
-    Integer(1, 5, name='scale'),
+    Categorical(['half_gaussian_bell', 'uniform'], name='distribution'),
+    Integer(0, 1, name='radius'),
+    Integer(1, 30, name='scale'),
 ]
 
 file_path = "Training 2025.04.22DM.xlsx"  # Adjust path if needed
@@ -31,7 +31,7 @@ if __name__ == "__main__":
     res = gp_minimize(
         objective,
         search_space,
-        n_calls=30,
+        n_calls=10,
         random_state=0
     )
     print("Best loss:", res.fun)

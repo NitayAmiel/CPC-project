@@ -10,3 +10,14 @@ kappa=7, delta=0.44427423585655046, eta=0.7315985522666514, distribution=uniform
 Best loss: 0.026735109463276837
 Best parameters:
 kappa=9, delta=0.4143158063681155, eta=0.7492172409901976, distribution=uniform, radius=3, scale=5
+
+when inserting the negative values 5 times more
+0.02474915909090909
+
+Best loss: 0.024731749999999997
+Best parameters:
+kappa=4, delta=0.35657560851692627, eta=0.7006991328491539, distribution=half_gaussian_bell, radius=3, scale=5
+
+Best loss: 0.024532578124999996
+Best parameters:
+kappa=4, delta=0.3810462660157783, eta=0.6951357612910574, distribution=half_gaussian_bell, radius=0, scale=15
