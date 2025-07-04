@@ -2,6 +2,9 @@ import numpy as np
 import pandas as pd
 import random
 import math
+import sys
+from lss_aversion import homesky_salience_weight, sample_keys
+
 
 A = 1
 B = 2
@@ -35,7 +38,7 @@ def sample_from_list(lst, n, distribution="half_gaussian_bell", spread=3):
         raise ValueError(f"Unsupported distribution type: {distribution}")
 
 class ISamplerAgent:
-    def __init__(self, delta=0.5, kappa=10, eta=0.1, padescriptor=None, distribution = "uniform", forgone=False):
+    def __init__(self, delta=0.5, kappa=10, eta=0.1, padescriptor=None, distribution = "uniform", forgone=False, alpha=0.88, beta=0.88, lambda_=2.5, gamma=0.1):
         self.delta = delta
         self.kappa = kappa
         self.eta = eta
@@ -43,6 +46,10 @@ class ISamplerAgent:
         self.distribution = distribution
         self.memory = []  # Each entry will be (choice, A_payoff, B_payoff) where choice is 1 for A, 0 for B
         self.forgone = forgone
+        self.alpha = alpha
+        self.beta = beta
+        self.lambda_ = lambda_
+        self.gamma = gamma
 
     def surprise(self):
         if not self.memory:
@@ -70,14 +77,20 @@ class ISamplerAgent:
         idx_list = []
         for idx in range(len(self.memory)):
             if type == None or self.memory[idx][0] == type:
-                idx_list.append(idx)    
+                choice = self.memory[idx][0]
+                weight = homesky_salience_weight(self.memory[idx][choice], alpha=self.alpha, beta=self.beta, lambda_=self.lambda_, gamma=self.gamma)
+                tuple_to_add = (idx, weight)
+                idx_list.append(tuple_to_add)    
         if len(idx_list) == 0:
             return []
-        
+        total_weight = sum(w for _, w in idx_list)
+        if total_weight == 0:
+            breakpoint()
+        weighted_list = [(i, w / total_weight) for i, w in idx_list]
         num_of_idx = min(num_of_idx, len(idx_list))
-        return sample_from_list(idx_list, num_of_idx, self.distribution)
+        return sample_keys(weighted_list, num_of_idx)
 
-        
+ 
     def get_sample_prob(self):
         if self.forgone:
             num_of_A = 0
@@ -180,7 +193,7 @@ class ISamplerAgent:
 
 
 
-def simulate_task(p_a_descriptor, a_prob, a1, a2, b_prob, b1, b2, forgone, n_participants, n_trials, corr_ab, kappa, delta, eta ,distribution , radius=1 ):
+def simulate_task(p_a_descriptor, a_prob, a1, a2, b_prob, b1, b2, forgone, n_participants, n_trials, corr_ab, kappa, delta, eta ,distribution , alpha, beta, lambda_, gamma, radius=1):
     results = {
         'arate1': 0.0, 'arate2': 0.0, 'arate3': 0.0, 'arate4': 0.0,
         'afoka': 0.0, 'afrega': 0.0, 'afregb': 0.0, 'afokb': 0.0
@@ -204,7 +217,7 @@ def simulate_task(p_a_descriptor, a_prob, a1, a2, b_prob, b1, b2, forgone, n_par
 
     for idx in range(n_participants):
         kappa_curr = kappa + (radius - (idx % (radius*2 + 1)))
-        agent = ISamplerAgent(padescriptor=p_a_descriptor, forgone=forgone, kappa= kappa_curr, delta = delta, eta = eta, distribution=distribution)
+        agent = ISamplerAgent(padescriptor=p_a_descriptor, forgone=forgone, kappa= kappa_curr, delta = delta, eta = eta, distribution=distribution, alpha=alpha, beta=beta, lambda_=lambda_, gamma=gamma)
 
         for t in range(n_trials):
             # breakpoint()
@@ -260,7 +273,7 @@ def simulate_task(p_a_descriptor, a_prob, a1, a2, b_prob, b1, b2, forgone, n_par
     return results
 
 
-def evaluate_against_dataset(excel_path, kappa, delta, eta, distribution, radius, scale):
+def evaluate_against_dataset(excel_path, kappa, delta, eta, distribution, radius, scale, alpha, beta, lambda_, gamma):
     df = pd.read_excel(excel_path)
     target_cols = ['arate1', 'arate2', 'arate3', 'arate4', 'afoka', 'afrega', 'afregb', 'afokb']
     df_clean = df[df['ChatGPTo'].notna()]
@@ -280,7 +293,7 @@ def evaluate_against_dataset(excel_path, kappa, delta, eta, distribution, radius
             a_prob=float(row['pa1']), a1=float(row['a1']), a2=float(row['a2']),
             b_prob=float(row['pb1']), b1=float(row['b1']), b2=float(row['b2']),
             forgone=bool(1 - row['forgone']), n_participants=scale*int(row['n']), n_trials=100, corr_ab=int(row['corrAB'])
-        , kappa = kappa, delta = delta, eta = eta, distribution=distribution,  radius = radius)
+        , kappa = kappa, delta = delta, eta = eta, distribution=distribution,  radius = radius, alpha=alpha, beta=beta, lambda_=lambda_, gamma=gamma)
         predicted_results.append(sim_result)
 
     pred_df = pd.DataFrame(predicted_results)
@@ -314,7 +327,11 @@ if __name__ == "__main__":
         eta=hyper_parameters["eta"],
         distribution=hyper_parameters["distribution"],
         radius=hyper_parameters["radius"],
-        scale=hyper_parameters["scale"]
+        scale=hyper_parameters["scale"],
+        alpha=hyper_parameters["alpha"],
+        beta=hyper_parameters["beta"],
+        lambda_=hyper_parameters["lambda_"],
+        gamma=hyper_parameters["gamma"]
     )
     print(lossval)
     

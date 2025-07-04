@@ -21,3 +21,10 @@ kappa=4, delta=0.35657560851692627, eta=0.7006991328491539, distribution=half_ga
 Best loss: 0.024532578124999996
 Best parameters:
 kappa=4, delta=0.3810462660157783, eta=0.6951357612910574, distribution=half_gaussian_bell, radius=0, scale=15
+
+est loss: 0.02212956818181818
+Best parameters:
+kappa=9, delta=0.33320437330764924, eta=0.7456790260750077, distribution=uniform, radius=1, scale=5, alpha=0.34965659084399175, beta=0.4660341806781261, lambda_=1.4776285918940686, gamma=0.16492999532234712
+
+Best loss: 0.020256964488636366
+not sure what the parameters are
